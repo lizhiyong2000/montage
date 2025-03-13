@@ -3,6 +3,8 @@ import { fileURLToPath } from "url";
 import { defineConfig } from "vite";
 import vuetify, { transformAssetUrls } from "vite-plugin-vuetify";
 
+import tailwindcss from "@tailwindcss/vite"
+
 export default defineConfig({
   plugins: [
     vue({
@@ -10,7 +12,8 @@ export default defineConfig({
     }),
     vuetify({
       autoImport: true
-    })
+    }),
+    tailwindcss(),
   ],
   resolve: {
     alias: {

@@ -1,7 +1,9 @@
 import { Layer } from "@/models/common";
 import { defineStore } from "pinia";
 import { computed, defineAsyncComponent, ref, watch } from "vue";
-import { TABS } from "../utils/constants";
+import { TABS } from "@/utils/constants";
+
+import {FabricObject} from "fabric"
 
 export const useDashboardStore = defineStore("dashboard", () => {
   const activeTab = ref(TABS.OBJECTS);
@@ -23,7 +25,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
   const videoDuration = ref(0);
   const layers = ref<Layer[]>([]);
 
-  const activeObject = ref<fabric.Object | null | undefined>(null);
+  const activeObject = ref<FabricObject | null | undefined>(null);
 
   const activeObjectId = computed(() => {
     if (activeObject.value) {
@@ -82,7 +84,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
     if (height) artboardHeight.value = height;
   };
 
-  const setActiveObject = (obj: fabric.Object | null | undefined) => {
+  const setActiveObject = (obj: FabricObject | null | undefined) => {
     activeObject.value = obj;
   };
 

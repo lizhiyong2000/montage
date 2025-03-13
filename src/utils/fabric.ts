@@ -1,21 +1,32 @@
 import { ALIGN_OPTIONS, SNAP_CHECK_DIRECTION } from "@/utils/constants";
-import { fabric } from "fabric";
+import {
+  Canvas,
+  Line,
+  Rect,
+  FabricObject,
+  BasicTransformEvent,
+} from "fabric";
+
+
+type Nullable<T> = T | null;
 
 export const checkVSnap = (
-  lineV: fabric.Line | null,
+  canvas: Canvas,
+  lineV: Nullable<Line>,
   artBoardLeft: number,
   artBoardWidth: number,
   a: number,
   b: number,
   snapZone: number,
-  e: fabric.IEvent<MouseEvent>,
+  e: BasicTransformEvent & {target: FabricObject},
   type: number
 ) => {
   if (a > b - snapZone && a < b + snapZone) {
     const height = e.target?.get("height") as number;
     const scaleY = e.target?.get("scaleY") as number;
     lineV!.opacity = 1;
-    lineV?.bringToFront();
+    // lineV?.bringToFront();
+    canvas!.bringObjectToFront(lineV!)
     let value = b;
 
     if (type == SNAP_CHECK_DIRECTION.BOTTOM) {
@@ -41,20 +52,23 @@ export const checkVSnap = (
 };
 
 export const checkHSnap = (
-  lineH: fabric.Line | null,
+  canvas: Canvas,
+  lineH: Nullable<Line>,
   artBoardTop: number,
   artBoardHeight: number,
   a: number,
   b: number,
   snapZone: number,
-  e: fabric.IEvent<MouseEvent>,
+  e: BasicTransformEvent & {target: FabricObject},
   type: number
 ) => {
   if (a > b - snapZone && a < b + snapZone) {
     const width = e.target?.get("height") as number;
     const scaleX = e.target?.get("scaleX") as number;
     lineH!.opacity = 1;
-    lineH?.bringToFront();
+    // lineH?.bringToFront();
+    canvas!.bringObjectToFront(lineH!)
+
     let value = b;
 
     if (type == SNAP_CHECK_DIRECTION.BOTTOM) {
@@ -80,7 +94,7 @@ export const checkHSnap = (
 };
 
 export const getObjectById = (
-  fabricCanvas: fabric.Canvas | null,
+  fabricCanvas: Nullable<Canvas>,
   id: string
 ) => {
   let object = null;
@@ -116,10 +130,10 @@ export const getObjectById = (
 };
 
 export const centerLines = (
-  e: fabric.IEvent<MouseEvent>,
-  lineH: fabric.Line | null,
-  lineV: fabric.Line | null,
-  fabricCanvas: fabric.Canvas | null,
+  e: BasicTransformEvent & {target: FabricObject},
+  lineH: Nullable<Line>,
+  lineV: Nullable<Line>,
+  fabricCanvas: Nullable<Canvas>,
   artBoardTop: number,
   artBoardLeft: number,
   artBoardWidth: number,
@@ -149,6 +163,7 @@ export const centerLines = (
       //@ts-ignore
       if (obj.get("id") == "centerH" || obj.get("id") == "centerV") {
         checkHSnap(
+          fabricCanvas!,
           lineH,
           artBoardTop,
           artBoardHeight,
@@ -159,6 +174,7 @@ export const centerLines = (
           1
         );
         checkVSnap(
+          fabricCanvas!,
           lineV,
           artBoardLeft,
           artBoardWidth,
@@ -238,6 +254,7 @@ export const centerLines = (
           const [aLeft, bLeft, type1] = checkLeft[i];
           const [aTop, bTop, type2] = checkTop[i];
           checkHSnap(
+            fabricCanvas!,
             lineH,
             artBoardTop,
             artBoardHeight,
@@ -248,6 +265,7 @@ export const centerLines = (
             type1
           );
           checkVSnap(
+            fabricCanvas!,
             lineV,
             artBoardLeft,
             artBoardWidth,
@@ -264,12 +282,12 @@ export const centerLines = (
 };
 
 export const initializeFabric = (
-  canvas: HTMLCanvasElement | null,
+  canvas: HTMLCanvasElement,
   width: number,
   height: number,
   backgroundColor: string
 ) => {
-  const fCanvas = new fabric.Canvas(canvas, {
+  const fCanvas = new Canvas(canvas, {
     width,
     height,
     backgroundColor,
@@ -282,7 +300,7 @@ export const initializeFabric = (
     selectionLineWidth: 1.5
   });
 
-  fabric.Object.prototype.set({
+  FabricObject.prototype.set({
     transparentCorners: false,
     borderColor: "#51B9F9",
     cornerColor: "#FFF",
@@ -305,10 +323,10 @@ export const calculateTextWidth = (
 };
 
 export const alignActiveObject = (
-  activeObject: fabric.Object | null,
+  activeObject: FabricObject | null | undefined,
   option: number,
-  artBoard: fabric.Rect | null,
-  canvas: fabric.Canvas | null
+  artBoard: Rect | null,
+  canvas: Canvas | null
 ) => {
   if (activeObject && artBoard && canvas) {
     const objectHeight = activeObject.get("height") as number;

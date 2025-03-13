@@ -1,3 +1,5 @@
+import {FabricObject} from 'fabric'
+
 export interface TabItem {
   value: number;
   name: string;
@@ -10,7 +12,7 @@ export interface SelectItem<T> {
 }
 
 export interface Layer {
-  object: fabric.Object | null;
+  object: FabricObject | null;
   id: string;
   type: string;
   startTrim: number;

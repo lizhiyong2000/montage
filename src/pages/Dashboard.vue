@@ -123,16 +123,17 @@ import {
   move,
   readFile
 } from "@/utils/helpers";
-import { invoke } from "@tauri-apps/api";
-import { save } from "@tauri-apps/api/dialog";
-import { BaseDirectory, removeFile, writeBinaryFile } from "@tauri-apps/api/fs";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+import { BaseDirectory, remove, writeFile } from "@tauri-apps/plugin-fs";
 import {
   onKeyDown,
   useElementSize,
   useEventBus,
   useEventListener
 } from "@vueuse/core";
-import { fabric } from "fabric";
+import {Canvas, Circle, Line, Rect, Textbox, Point, FabricImage, FabricObject, util} from "fabric";
+import { loadSVGFromURL} from "fabric"
 import { randInt } from "matija-utils";
 import { storeToRefs } from "pinia";
 import {
@@ -142,8 +143,8 @@ import {
   onMounted,
   reactive,
   ref,
-  watch
-} from "vue";
+  watch,
+} from 'vue'
 // @ts-ignore-line
 import colors from "vuetify/lib/util/colors";
 
@@ -202,11 +203,11 @@ const canvas = ref<HTMLCanvasElement | null>(null);
 const main = ref<HTMLElement | null>(null);
 const recordCanvas = ref<HTMLCanvasElement | null>(null);
 
-let fabricCanvas: fabric.Canvas | null = null;
-let artBoard: fabric.Rect | null = null;
-let lineH: fabric.Line | null = null;
-let lineV: fabric.Line | null = null;
-let centerCircle: fabric.Circle | null = null;
+let fabricCanvas: Canvas | null = null;
+let artBoard: Rect | null = null;
+let lineH: Line | null = null;
+let lineV: Line | null = null;
+let centerCircle: Circle | null = null;
 
 let recorder: MediaRecorder | null = null;
 
@@ -214,7 +215,7 @@ const { width: mainWidth, height: mainHeight } = useElementSize(main);
 
 // Computed properties
 const videoObjects = computed(() =>
-  layers.value.filter((l) => l.type === LAYER_TYPE.VIDEO)
+  (layers.value.filter((l) => l.type === LAYER_TYPE.VIDEO) as Layer[])
 );
 
 const artBoardLeft = computed(() => artBoard?.get("left") as number);
@@ -242,8 +243,8 @@ const drawImage = () => {
 
 const convertFile = async (content?: Uint8Array) => {
   try {
-    await writeBinaryFile("output.webm", content as Uint8Array, {
-      dir: BaseDirectory.Temp
+    await writeFile("output.webm", content as Uint8Array, {
+      baseDir: BaseDirectory.Temp
     });
     const [originPath, convertedPath] = await invoke<string[]>("convert", {
       fileName: "output.webm"
@@ -261,7 +262,7 @@ const convertFile = async (content?: Uint8Array) => {
       convertedPath,
       savePath
     });
-    await removeFile(originPath);
+    await remove(originPath);
     createToast("File saved!", colors.green.lighten1);
   } catch (e: any) {
     createToast(e, colors.red.darken1);
@@ -302,7 +303,7 @@ const $export = async () => {
       createToast("🌟 Video successfully rendered!", colors.green.darken1);
       const output = new Blob(chunks, { type: recorder?.mimeType });
       const res = await blobToBinary(output);
-      convertFile(res);
+      await convertFile(res);
     } else {
       createToast("🚨 Failed to capture any chunks!", colors.red.darken3);
     }
@@ -315,7 +316,8 @@ const $export = async () => {
   if (!paused.value) {
     togglePlay();
   }
-  fabricCanvas?.discardActiveObject().renderAll();
+  fabricCanvas?.discardActiveObject();
+  fabricCanvas?.renderAll();
   state.currentTime = 0;
   togglePlay();
   recorder.start();
@@ -386,10 +388,12 @@ const shiftLayer = (forward: boolean) => {
     if (layerIdx !== -1) {
       if (forward && layerIdx - 1 >= 0) {
         move(layers.value, layerIdx, layerIdx - 1);
-        obj.bringForward();
+        // obj.bringForward();
+        fabricCanvas?.bringObjectForward(obj);
       } else if (!forward && layerIdx + 1 < layers.value.length) {
         move(layers.value, layerIdx, layerIdx + 1);
-        obj.sendBackwards();
+        // obj.sendBackwards();
+        fabricCanvas?.bringObjectForward(obj);
       }
     }
   }
@@ -402,7 +406,7 @@ const newTextbox = (
   font: string
 ) => {
   const id = randInt(1, 9999).toString();
-  const newText = new fabric.Textbox(text, {
+  const newText = new Textbox(text, {
     left: artBoardLeft.value + artboardWidth.value / 2,
     top: artBoardTop.value + artboardHeight.value / 2,
     originX: "center",
@@ -431,7 +435,8 @@ const newTextbox = (
   });
   fabricCanvas?.add(newText);
   fabricCanvas?.setActiveObject(newText);
-  fabricCanvas?.bringToFront(newText);
+  // fabricCanvas?.bringToFront(newText);
+  fabricCanvas?.bringObjectToFront(newText);
   newText.enterEditing();
   newText.selectAll();
   fabricCanvas?.renderAll();
@@ -461,7 +466,7 @@ const initLines = () => {
   }
 
   fabricCanvas?.add(
-    new fabric.Line(
+    new Line(
       [
         fabricCanvas?.getWidth() / 2,
         0,
@@ -479,7 +484,7 @@ const initLines = () => {
   );
 
   fabricCanvas?.add(
-    new fabric.Line(
+    new Line(
       [
         0,
         fabricCanvas?.getHeight() / 2,
@@ -496,7 +501,7 @@ const initLines = () => {
     )
   );
 
-  lineH = new fabric.Line(
+  lineH = new Line(
     [
       fabricCanvas!.getWidth() / 2,
       artBoardTop.value,
@@ -513,7 +518,7 @@ const initLines = () => {
     }
   );
 
-  lineV = new fabric.Line(
+  lineV = new Line(
     [
       artBoardLeft.value,
       fabricCanvas!.getHeight() / 2,
@@ -543,8 +548,9 @@ const setActiveObject = (id: string) => {
 };
 
 const newSvg = (path: string) => {
-  fabric.loadSVGFromURL(path, (objects, options) => {
-    const svgData = fabric.util.groupSVGElements(objects, options);
+  loadSVGFromURL(path).then(({objects, options}) => {
+    let nonnullObjects = objects.filter((o) => o != null) as FabricObject[]
+    const svgData = util.groupSVGElements(nonnullObjects, options);
     svgData.top = mainHeight.value / 2 - (svgData.height as number) / 2;
     svgData.left = mainWidth.value / 2 - (svgData.width as number) / 2;
     const id = randInt(1, 9999).toString();
@@ -569,50 +575,51 @@ const newImage = async (source: File | string) => {
   if (typeof source !== "string") {
     source = await readFile(source);
   }
-  fabric.Image.fromURL(source, (image) => {
-    if (
-      (image.get("width") as number) > artboardWidth.value ||
-      (image.get("height") as number) > artboardHeight.value
-    ) {
-      image.scaleToWidth(artboardWidth.value);
-      image.scaleToHeight(artboardHeight.value);
-      image.set(
-        "top",
-        artBoardTop.value +
+  FabricImage.fromURL(source).then( (image) => {
+      if (
+        (image.get("width") as number) > artboardWidth.value ||
+        (image.get("height") as number) > artboardHeight.value
+      ) {
+        image.scaleToWidth(artboardWidth.value);
+        image.scaleToHeight(artboardHeight.value);
+        image.set(
+          "top",
+          artBoardTop.value +
           artboardHeight.value / 2 -
           image.getScaledHeight() / 2
-      );
-      image.set(
-        "left",
-        artBoardLeft.value +
+        );
+        image.set(
+          "left",
+          artBoardLeft.value +
           artboardWidth.value / 2 -
           image.getScaledWidth() / 2
-      );
-    } else {
-      image.set("top", artboardHeight.value / 2 - (image.height as number) / 2);
-      image.set("left", artboardWidth.value / 2 - (image.width as number) / 2);
+        );
+      } else {
+        image.set("top", artboardHeight.value / 2 - (image.height as number) / 2);
+        image.set("left", artboardWidth.value / 2 - (image.width as number) / 2);
+      }
+      //@ts-ignore
+      image.set("id", id);
+      fabricCanvas?.add(image);
+      fabricCanvas?.bringObjectToFront(image);
+      fabricCanvas?.setActiveObject(image);
+      fabricCanvas?.renderAll();
+      dashboardStore.addLayer({
+        id,
+        object: image,
+        type: LAYER_TYPE.IMAGE,
+        endTrim: 0,
+        offset: 0,
+        startTrim: 0,
+        duration: DEFAULT_ASSET_DURATION
+      });
     }
-    //@ts-ignore
-    image.set("id", id);
-    fabricCanvas?.add(image);
-    fabricCanvas?.bringToFront(image);
-    fabricCanvas?.setActiveObject(image);
-    fabricCanvas?.renderAll();
-    dashboardStore.addLayer({
-      id,
-      object: image,
-      type: LAYER_TYPE.IMAGE,
-      endTrim: 0,
-      offset: 0,
-      startTrim: 0,
-      duration: DEFAULT_ASSET_DURATION
-    });
-  });
+  );
 };
 
 const newVideo = (file: HTMLVideoElement, source: string, duration: number) => {
   const id = randInt(1, 9999).toString();
-  const newVideo = new fabric.Image(file, {
+  const newVideo = new FabricImage(file, {
     left: artBoardLeft.value + artboardWidth.value / 2,
     top: artBoardTop.value + artboardHeight.value / 2,
     width: file.width,
@@ -645,7 +652,7 @@ const newVideo = (file: HTMLVideoElement, source: string, duration: number) => {
   newVideo.scaleToWidth(artboardHeight.value);
   fabricCanvas?.renderAll();
   fabricCanvas?.setActiveObject(newVideo);
-  fabricCanvas?.bringToFront(newVideo);
+  fabricCanvas?.bringObjectToFront(newVideo);
   fabricCanvas?.renderAll();
   //@ts-ignore
   newVideo.set("id", id);
@@ -767,7 +774,8 @@ const updateLayerVisibility = () => {
     } else {
       layer.object!.visible = false;
       if (objectId === activeObjectId) {
-        fabricCanvas?.discardActiveObject().renderAll();
+        fabricCanvas?.discardActiveObject();
+        fabricCanvas?.renderAll();
       }
     }
   }
@@ -878,7 +886,8 @@ const handleKeyDown = (e: KeyboardEvent) => {
         }
         dashboardStore.removeLayer(layer);
         fabricCanvas?.remove(activeObject);
-        fabricCanvas?.discardActiveObject().renderAll();
+        fabricCanvas?.discardActiveObject();
+        fabricCanvas?.renderAll();
         createToast("Layer removed", colors.purple.darken1);
       }
       // Copy
@@ -914,7 +923,7 @@ watch([mainWidth, mainHeight], async ([width, height]) => {
 });
 
 watch(artboardColor, (val) => {
-  fabricCanvas?.setBackgroundColor(val, () => {});
+  // fabricCanvas?.setBackgroundColor(val, () => {});
   fabricCanvas?.renderAll();
 });
 
@@ -949,7 +958,8 @@ onKeyDown("Delete", () => {
     }
     fabricCanvas?.remove(obj);
   });
-  fabricCanvas?.discardActiveObject().renderAll();
+  fabricCanvas?.discardActiveObject();
+  fabricCanvas?.renderAll();
 });
 
 document.addEventListener("keydown", handleKeyDown);
@@ -962,12 +972,9 @@ const wheelScrollEvent = useEventListener(main, "wheel", (e: WheelEvent) => {
   }
   fabricCanvas?.setZoom(1);
   fabricCanvas?.renderAll();
-  fabricCanvas?.absolutePan({
-    x:
-      artBoardLeft.value + artboardWidth.value / 2 - mainWidth.value / zoom / 2,
-    y:
-      artBoardTop.value + artboardHeight.value / 2 - mainHeight.value / zoom / 2
-  });
+  fabricCanvas?.absolutePan(
+    new Point(artBoardLeft.value + artboardWidth.value / 2 - mainWidth.value / zoom / 2, artBoardTop.value + artboardHeight.value / 2 - mainHeight.value / zoom / 2)
+  );
   fabricCanvas?.setZoom(zoom);
   fabricCanvas?.renderAll();
   state.zoomLevel = fabricCanvas!.getZoom() * 100;
@@ -982,7 +989,7 @@ onMounted(() => {
     artboardColor.value
   );
 
-  artBoard = new fabric.Rect({
+  artBoard = new Rect({
     left: mainWidth.value / 2 - artboardWidth.value / 2,
     top: mainHeight.value / 2 - artboardHeight.value / 2,
     width: artboardWidth.value,
@@ -996,7 +1003,7 @@ onMounted(() => {
     cornerColor: colors.blue.darken1
   });
 
-  centerCircle = new fabric.Circle({
+  centerCircle = new Circle({
     left: mainWidth.value / 2 - 10,
     top: mainHeight.value / 2 - 10,
     width: 20,
